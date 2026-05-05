@@ -8,7 +8,7 @@ Usage:
 
 import argparse
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,7 +16,7 @@ import numpy as np
 from euroc_loader import load_imu
 
 
-def plot_imu(imu: dict, save_path: Union[str, Path] | None = None) -> None:
+def plot_imu(imu: dict, save_path: Optional[Union[str, Path]] = None) -> None:
     """
     Six-panel figure: gyroscope (top row) + accelerometer (bottom row).
     Each column = one axis (X, Y, Z).

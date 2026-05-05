@@ -84,11 +84,3 @@ EuRoC MAV Dataset, MH_01_easy sequence.
 Burri et al., *The EuRoC micro aerial vehicle datasets*, IJRR 2016.
 IMU: ADIS16448, 200 Hz. Ground truth: Leica Nova MS50 total station.
 
----
-
-## Background
-
-My bachelor's thesis measured structural acoustics (accelerometer + signal processing pipeline),
-and I spent two years doing E/E integration at Magna Steyr — sensor wiring, CAN diagnostics,
-test validation. This project applies the same measurement-first thinking to robotics state
-estimation: characterize the noise before trusting the filter.
