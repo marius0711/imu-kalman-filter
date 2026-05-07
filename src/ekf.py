@@ -323,16 +323,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sys.path.insert(0, os.path.dirname(__file__))
-    from euroc_loader import load_imu_data
+    from euroc_loader import load_imu
 
-    imu_path = os.path.join(args.dataset, "imu0", "data.csv")
-    imu = load_imu_data(imu_path)
+    imu = load_imu(args.dataset)
 
-    timestamps = imu["timestamps"]
+    timestamps = imu["t"]
     gyro = imu["gyro"]
     accel = imu["accel"]
 
-    print(f"Loaded {len(timestamps)} IMU samples from {imu_path}")
+    print(f"Loaded {len(timestamps)} IMU samples from {args.dataset}")
 
     quats = run_ekf_on_dataset(gyro, accel, timestamps)
     print(f"EKF complete. Final quaternion: {quats[-1]}")
