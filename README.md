@@ -12,38 +12,47 @@ Part of a robotics sensing portfolio — see also
 
 ## What this implements
 
-**Week 1 — Noise characterization & baseline**
+**Noise characterization**
 
-The filter is only as good as the noise model that feeds it. Before writing a single line of filtering
-code, this project characterizes the sensor:
+The filter is only as good as the noise model that feeds it. Before any filtering, the sensor noise
+is characterized from data:
 
 - Raw IMU signal loading and visualization (EuRoC CSV format, 200 Hz)
-- Noise characterization: white noise, bias instability, random walk
-- Allan deviation analysis — the industry standard for IMU noise quantification, rarely seen in
-  portfolio projects. Identifies noise regimes from log-log slope: ARW (−½), bias instability (0),
-  rate random walk (+½). The extracted parameters feed directly into the EKF noise matrices Q and R.
-- Complementary filter as a calibrated baseline: fuses gyro (high-pass) and accelerometer (low-pass)
-  to estimate roll and pitch. Demonstrates why a fixed-gain filter is insufficient — no uncertainty
-  quantification, no bias estimation, yaw unobservable.
+- Allan deviation analysis — the industry standard for IMU noise quantification. Identifies noise
+  regimes from log-log slope: angle random walk (−½), bias instability (0), rate random walk (+½).
+  The extracted parameters feed directly into the EKF noise matrices Q and R — not manual tuning.
 
-**Week 2 — Extended Kalman Filter** *(in progress)*
+**Complementary filter (baseline)**
 
-- State vector: quaternion `[q0, q1, q2, q3]` + gyro bias `[bx, by, bz]` — 7 states
-- Process model: quaternion kinematics driven by gyroscope (no gimbal lock)
-- Measurement model: gravity reference from accelerometer
-- Noise matrices Q and R derived from Allan deviation results
-- Validation: RMSE < 2° on synthetic circular motion with injected noise
-- Visualization with rerun.io + matplotlib
+Fuses gyroscope (high-pass) and accelerometer (low-pass) to estimate roll and pitch. Demonstrates
+why a fixed-gain filter is insufficient: no bias estimation, no uncertainty quantification, yaw
+unobservable from accelerometer alone.
+
+**Extended Kalman Filter**
+
+7-dimensional state vector: quaternion `[q0, q1, q2, q3]` + gyro bias `[bx, by, bz]`.
+
+The quaternion parametrization avoids gimbal lock and integrates cleanly via the kinematic
+equation `dq/dt = 0.5 · Ω(ω) · q`. The bias is estimated online — not pre-calibrated — which is
+what separates a 1-minute filter from a 10-minute filter in practice.
+
+Noise matrices Q and R are derived analytically from Allan deviation results. The Jacobians F (7×7)
+and H (3×7) are derived by hand and verified numerically against finite differences.
+
+| Filter | RMSE (20 s pitch sweep) |
+|---|---|
+| Accelerometer only | 175.6° |
+| Complementary filter | 193.5° |
+| EKF | **0.15°** |
 
 ---
 
 ## Why EKF, not a neural network?
 
-An EKF makes its assumptions explicit. The process noise matrix Q encodes how much the bias drifts
-per second. The measurement noise matrix R encodes how much we trust the accelerometer. The
-covariance matrix P tells you at every timestep exactly how uncertain the estimate is. A neural
-network gives you a number — the EKF gives you a number and an honest confidence interval. For
-safety-critical robotics systems, that distinction matters.
+An EKF makes its assumptions explicit. Q encodes how much the bias drifts per second. R encodes how
+much we trust the accelerometer. The covariance matrix P gives an honest uncertainty estimate at
+every timestep. A neural network gives you a number — the EKF gives you a number and a confidence
+interval. For safety-critical robotics systems, that distinction matters.
 
 ---
 
@@ -51,7 +60,7 @@ safety-critical robotics systems, that distinction matters.
 
 ```
 imu-kalman-filter/
-├── conftest.py                        # pytest path setup
+├── conftest.py
 ├── data/
 │   ├── download_euroc.sh              # fetch MH_01_easy from ETH ASL
 │   └── MH_01_easy/                    # synthetic dataset (EuRoC format)
@@ -61,12 +70,13 @@ imu-kalman-filter/
 │   ├── plot_raw_imu.py                # 6-panel raw signal visualization
 │   ├── allan_deviation.py             # Allan deviation noise characterization
 │   ├── complementary_filter.py        # complementary filter baseline
-│   ├── visualize_rerun.py             # rerun.io 3D orientation viewer
-│   └── ekf.py                         # Extended Kalman Filter (Week 2)
+│   ├── ekf.py                         # Extended Kalman Filter
+│   ├── compare_filters.py             # accel-only vs. CF vs. EKF comparison plot
+│   └── visualize_rerun.py             # rerun.io 3D orientation viewer
 ├── tests/
 │   ├── test_euroc_loader.py           # 9 tests
 │   ├── test_complementary_filter.py   # 8 tests
-│   └── test_ekf.py                    # Week 2
+│   └── test_ekf.py                    # 19 tests
 ├── results/                           # generated figures (git-ignored)
 └── requirements.txt
 ```
@@ -84,7 +94,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Generate synthetic dataset (EuRoC format, 60s, 200 Hz):
+Generate synthetic dataset (EuRoC format, 60 s, 200 Hz):
 
 ```bash
 python3 src/generate_synthetic_imu.py --out data/MH_01_easy
@@ -110,6 +120,12 @@ python3 src/allan_deviation.py --dataset data/MH_01_easy --save results/allan.pn
 # Complementary filter
 python3 src/complementary_filter.py --dataset data/MH_01_easy --save results/complementary.png
 
+# EKF — run on dataset, save quaternion output
+python3 src/ekf.py --dataset data/MH_01_easy --save results/quats_ekf.npy
+
+# Filter comparison plot
+python3 src/compare_filters.py --save results/filter_comparison.png
+
 # rerun.io 3D visualization (launches viewer)
 python3 src/visualize_rerun.py --dataset data/MH_01_easy
 
@@ -122,26 +138,14 @@ pytest tests/ -v
 ## Test results
 
 ```
-tests/test_complementary_filter.py::test_output_keys              PASSED
-tests/test_complementary_filter.py::test_output_shapes            PASSED
-tests/test_complementary_filter.py::test_static_roll_zero         PASSED
-tests/test_complementary_filter.py::test_static_known_tilt        PASSED
-tests/test_complementary_filter.py::test_cf_less_drift_than_gyro  PASSED
-tests/test_complementary_filter.py::test_alpha_effect             PASSED
-tests/test_complementary_filter.py::test_accel_to_angles_gravity_aligned  PASSED
-tests/test_complementary_filter.py::test_accel_to_angles_pure_roll        PASSED
-tests/test_euroc_loader.py::test_imu_keys                         PASSED
-tests/test_euroc_loader.py::test_imu_shapes                       PASSED
-tests/test_euroc_loader.py::test_imu_time_starts_at_zero          PASSED
-tests/test_euroc_loader.py::test_imu_sample_rate                  PASSED
-tests/test_euroc_loader.py::test_imu_missing_file_raises          PASSED
-tests/test_euroc_loader.py::test_gt_keys                          PASSED
-tests/test_euroc_loader.py::test_gt_shapes                        PASSED
-tests/test_euroc_loader.py::test_gt_time_starts_at_zero           PASSED
-tests/test_euroc_loader.py::test_gt_missing_file_raises           PASSED
-
-17 passed in 1.04s
+36 passed in 1.99s
 ```
+
+| Module | Tests | Coverage |
+|---|---|---|
+| euroc_loader | 9 | shapes, dtypes, time zeroing, missing file |
+| complementary_filter | 8 | static tilt, drift correction, alpha effect |
+| ekf | 19 | init, static case, RMSE < 2°, bias convergence, Jacobian check, covariance SPD |
 
 ---
 
@@ -162,8 +166,6 @@ Noise parameters used for the synthetic generator:
 
 ## Related projects
 
-This project is the first in a three-part robotics sensing portfolio:
-
 1. **imu-kalman-filter** (this repo) — signal processing and state estimation from scratch
-2. [ros2-imu-fusion](https://github.com/marius0711/ros2-imu-fusion) — wraps the EKF as a production ROS2 node
+2. [ros2-imu-fusion](https://github.com/marius0711/ros2-imu-fusion) — wraps the EKF as a ROS2 node
 3. [sensor-calibration](https://github.com/marius0711/sensor-calibration) — six-position accelerometer calibration pipeline
